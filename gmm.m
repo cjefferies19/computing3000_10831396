@@ -64,10 +64,6 @@ contour(bor, bor, con2);
 contour(bor, bor, con3);
 contour(bor, bor, con4);
 
-% Axis limits and title
-title('Starting Data');
-axis([-8 8 -8 8])
-
 % Combining all data points into one array
 dataA = [data1; data2; data3; data4]; 
 dataPoints = size(dataA, 1); 
@@ -143,14 +139,6 @@ for iter = 1:1000
     end
 end
 
-% Graph to showcase performance
-figure(2);
-plot(performanceStore(1:iter));
-ylabel('Log Likelihood');
-title('Convergence');
-xlabel('Iteration');
-grid on;
-
 % Creates new figure post GMM
 figure(3); 
 hold off;
@@ -191,7 +179,7 @@ contour(bor, bor, con3);
 contour(bor, bor, con4);
 
 axis([-8 8 -8 8])
-title('New Data');
+title('GMM Data');
 
 % Calculating probability density
 function pd = gaussianProb(data, mu, Sigma) 
