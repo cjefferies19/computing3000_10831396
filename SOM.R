@@ -1,46 +1,28 @@
-#### generate some RGB data ####
+#### Load data from CSV file ####
+new_data <- read.csv("newData.csv")
 
-## select the number of random RGB vectors for training data
+#### Ensure the data contains only RGB values ####
+numeric_data <- new_data[sapply(new_data, is.numeric)]
+numeric_data <- numeric_data[, 1:3]  # Ensure only three columns for RGB
+colnames(numeric_data) <- c('R', 'G', 'B')
 
-sample.size <- 10000
-
-## generate dataframe of random RGB vectors
-
-sample.rgb <- as.data.frame(matrix(nrow = sample.size, ncol = 3))
-colnames(sample.rgb) <- c('R', 'G', 'B')
-
-sample.rgb$R <- sample(0:255, sample.size, replace = T)
-sample.rgb$G <- sample(0:255, sample.size, replace = T)
-sample.rgb$B <- sample(0:255, sample.size, replace = T)
-
-#### train the SOM ####
-
-## define a grid for the SOM and train
+#### Train the SOM ####
 
 library(kohonen)
+
+sample.rgb <- numeric_data  # Use data from CSV instead of generating random values
+sample.size <- nrow(sample.rgb)
 
 grid.size <- ceiling(sample.size ^ (1/2.5))
 som.grid <- somgrid(xdim = grid.size, ydim = grid.size, topo = 'hexagonal', toroidal = T)
 som.model <- som(data.matrix(sample.rgb), grid = som.grid)
 
-## extract some data to make it easier to use
-
+## Extract some data to make it easier to use
 som.events <- som.model$codes[[1]]
 som.events.colors <- rgb(som.events[,1], som.events[,2], som.events[,3], maxColorValue = 255)
 som.dist <- as.matrix(dist(som.events))
 
-## generate a plot of the untrained data.  this isn't really the configuration at first iteration, but
-## serves as an example
-
-plot(som.model,
-     type = 'mapping',
-     bg = som.events.colors[sample.int(length(som.events.colors), size = length(som.events.colors))],
-     keepMargins = F,
-     col = NA,
-     main = '')
-
-## generate a plot after training.
-
+## Generate a plot after training.
 plot(som.model,
      type = 'mapping',
      bg = som.events.colors,
@@ -48,14 +30,7 @@ plot(som.model,
      col = NA,
      main = '')
 
-#### look for a reasonable number of clusters ####
-
-## Evaluate within cluster distances for different values of k.  This is
-## more dependent on the number of map units in the SOM than the structure
-## of the underlying data, but until we have a better way...
-
-## Define a function to calculate mean distance within each cluster.  This
-## is roughly analogous to the within clusters ss approach
+#### Look for a reasonable number of clusters ####
 
 clusterMeanDist <- function(clusters){
   cluster.means = c()
@@ -95,15 +70,9 @@ legend('topright',
        col = c('black', 'red'),
        lty = c(1, 1))
 
-#### evaluate clustering algorithms ####
-
-## Having selected a reasonable value for k, evaluate different clustering algorithms.
+#### Evaluate clustering algorithms ####
 
 library(pmclust)
-
-## Define a function for make a simple plot of clustering output.
-## This is the same as previousl plotting, but we define the function
-## here as we wanted to play with the color earlier.
 
 plotSOM <- function(clusters){
   plot(som.model,
@@ -115,31 +84,25 @@ plotSOM <- function(clusters){
   add.cluster.boundaries(som.model, clusters)
 }
 
-## Try several different clustering algorithms, and, if desired, different values for k
-
 cluster.tries <- list()
 
 for(k in c(20)){
   
-  ## model based clustering using pmclust
-  
-  som.cluster.pm.em <- pmclust(som.events, K = k, algorithm = 'em')$class # model based
-  som.cluster.pm.aecm <- pmclust(som.events, K = k, algorithm = 'aecm')$class # model based
-  som.cluster.pm.apecm <- pmclust(som.events, K = k, algorithm = 'apecm')$class # model based
-  som.cluster.pm.apecma <- pmclust(som.events, K = k, algorithm = 'apecma')$class # model based
-  som.cluster.pm.kmeans <- pmclust(som.events, K = k, algorithm = 'kmeans')$class # model based
+  ## Model-based clustering using pmclust
+  som.cluster.pm.em <- pmclust(som.events, K = k, algorithm = 'em')$class
+  som.cluster.pm.aecm <- pmclust(som.events, K = k, algorithm = 'aecm')$class
+  som.cluster.pm.apecm <- pmclust(som.events, K = k, algorithm = 'apecm')$class
+  som.cluster.pm.apecma <- pmclust(som.events, K = k, algorithm = 'apecma')$class
+  som.cluster.pm.kmeans <- pmclust(som.events, K = k, algorithm = 'kmeans')$class
   
   ## k-means clustering
+  som.cluster.k <- kmeans(som.events, centers = k, iter.max = 100, nstart = 10)$cluster
   
-  som.cluster.k <- kmeans(som.events, centers = k, iter.max = 100, nstart = 10)$cluster # k-means
+  ## Hierarchical clustering
+  som.dist <- dist(som.events)
+  som.cluster.h <- cutree(hclust(som.dist), k = k)
   
-  ## hierarchical clustering
-  
-  som.dist <- dist(som.events) # hierarchical, step 1
-  som.cluster.h <- cutree(hclust(som.dist), k = k) # hierarchical, step 2
-  
-  ## capture outputs
-  
+  ## Capture outputs
   cluster.tries[[paste0('som.cluster.pm.em.', k)]] <- som.cluster.pm.em
   cluster.tries[[paste0('som.cluster.pm.aecm.', k)]] <- som.cluster.pm.aecm
   cluster.tries[[paste0('som.cluster.pm.apecm.', k)]] <- som.cluster.pm.apecm
@@ -149,9 +112,7 @@ for(k in c(20)){
   cluster.tries[[paste0('som.cluster.h.', k)]] <- som.cluster.h
 }
 
-## Take a look at the various clusters.  You're looking for the algorithm that produces the
-## least fragmented clusters.
-
+## Take a look at the various clusters
 plotSOM(cluster.tries$som.cluster.pm.em.20)
 plotSOM(cluster.tries$som.cluster.pm.aecm.20)
 plotSOM(cluster.tries$som.cluster.pm.apecm.20)
