@@ -1,93 +1,59 @@
-library(keras)
+# Load necessary libraries
 library(MASS)
 library(ggplot2)
 
-# Load the pre-trained autoencoder
-encoder <- keras_model_sequential() %>%
-  layer_dense(units = 64, activation = 'relu', input_shape = c(784)) %>%
+# Load data from CSV file
+new_data <- read.csv("newData.csv")
+
+# Ensure the data is numeric
+numeric_data <- new_data[sapply(new_data, is.numeric)]
+
+# Define the input layer
+input_layer <- layer_input(shape = ncol(numeric_data))
+
+# Define the encoding layers
+encoded <- input_layer %>%
+  layer_dense(units = 4, activation = 'relu') %>%
   layer_dense(units = 2, activation = 'relu')
 
-decoder <- keras_model_sequential() %>%
-  layer_dense(units = 64, activation = 'relu', input_shape = c(2)) %>%
-  layer_dense(units = 784, activation = 'sigmoid')
+# Define the decoding layers
+decoded <- encoded %>%
+  layer_dense(units = 4, activation = 'relu') %>%
+  layer_dense(units = ncol(numeric_data), activation = 'sigmoid')
 
-autoencoder <- keras_model(inputs = encoder$input, outputs = decoder(encoder$output))
+# Define the autoencoder model
+autoencoder <- keras_model(input_layer, decoded)
 
-# Compile the autoencoder
-autoencoder %>% compile(optimizer = 'adam', loss = 'binary_crossentropy')
+# Compile the model
+autoencoder %>% compile(optimizer = 'adam', loss = 'mean_squared_error')
 
-# Load and preprocess dataset
-new_data <- as.matrix(big_data)
-new_data <- scale(big_data) # Normalise the data
+# Train the autoencoder
+history <- autoencoder %>% fit(
+  as.matrix(numeric_data),
+  as.matrix(numeric_data),
+  epochs = 50,
+  batch_size = 10,
+  validation_split = 0.2
+)
 
-# Generate the encoded (latent) representation
-encoded_data <- encoder %>% predict(big_data)
+# Get the normalised data from the autoencoder
+normalized_data <- autoencoder %>% predict(as.matrix(numeric_data))
 
-dataA <- encoded_data  # GMM input
+# Convert the normalised data back to a data frame
+normalized_data <- as.data.frame(normalized_data)
 
-dataPoints <- nrow(dataA)
-clu <- 4  # Set number of clusters
-N <- nrow(dataA)
-D <- ncol(dataA)
+# Add column names
+colnames(normalized_data) <- colnames(numeric_data)
 
-# Initialize parameters
-indices <- sample(dataPoints)
-mu <- dataA[indices[1:clu], ]
-sigma <- vector("list", clu)
-for(j in 1:clu) {
-  sigma[[j]] <- cov(dataA)
-}
-phi <- rep(1 / clu, clu)
-W <- matrix(0, dataPoints, clu)
+# View the first few rows of the normalised dataset
+head(normalized_data)
 
-# Gaussian Probability Function
-gaussianProb <- function(data, mu, Sigma) {
-  n <- ncol(data)
-  meanDiff <- sweep(data, 2, mu)
-  pd <- (1 / sqrt((2 * pi)^n * det(Sigma))) * exp(-0.5 * rowSums((meanDiff %*% solve(Sigma)) * meanDiff))
-  return(pd)
-}
+# Use newData.csv for clustering analysis
+data <- numeric_data
+colnames(data) <- c("V1", "V2")
+data$cluster <- kmeans(data, centers = 4)$cluster
 
-# Training Loop
-performanceStore <- numeric(1000)
-for(iter in 1:1000) {
-  pdf <- matrix(0, dataPoints, clu)
-  
-  for(j in 1:clu) {
-    pdf[, j] <- gaussianProb(dataA, mu[j, ], sigma[[j]])
-  }
-  
-  pd_w <- sweep(pdf, 2, phi, `*`)
-  W <- sweep(pd_w, 1, rowSums(pd_w), `/`)
-  
-  performance <- sum(log(rowSums(pd_w)))
-  performanceStore[iter] <- performance
-  
-  previousMu <- mu
-  
-  for(j in 1:clu) {
-    phi[j] <- sum(W[, j]) / dataPoints
-    mu[j, ] <- colSums(sweep(W[, j], 1, dataA, `*`)) / sum(W[, j])
-    
-    sigma_k <- matrix(0, D, D)
-    data_m <- sweep(dataA, 2, mu[j, ])
-    for(i in 1:dataPoints) {
-      sigma_k <- sigma_k + W[i, j] * (t(data_m[i, ]) %*% data_m[i, ])
-    }
-    sigma[[j]] <- sigma_k / sum(W[, j])
-  }
-  
-  if(sum((mu - previousMu)^2) < 1e-6) {
-    break
-  }
-}
-
-# Visualize clusters for now
-cluster_labels <- apply(W, 1, which.max)
-dataA <- as.data.frame(dataA)
-dataA$cluster <- factor(cluster_labels)
-
-ggplot(dataA, aes(x = V1, y = V2, color = cluster)) +
+ggplot(data, aes(x = V1, y = V2, color = factor(cluster))) +
   geom_point() +
   theme_minimal() +
-  labs(title = "GMM Clustering on Autoencoder Features")
+  labs(title = "Clusters from newData.csv")
