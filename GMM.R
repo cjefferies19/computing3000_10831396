@@ -1,59 +1,44 @@
-# Load necessary libraries
-library(MASS)
-library(ggplot2)
+import numpy as np
+import pandas as pd
+from sklearn.mixture import GaussianMixture
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler
 
-# Load data from CSV file
-new_data <- read.csv("newData.csv")
+# Load the filled combined dataset
+df = pd.read_csv('combined_weather_data.csv')
 
-# Ensure the data is numeric
-numeric_data <- new_data[sapply(new_data, is.numeric)]
+# Select the relevant features for clustering
+X = df[['rainfall', 'temperature', 'wind']].values
 
-# Define the input layer
-input_layer <- layer_input(shape = ncol(numeric_data))
+# Normalize the data
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
 
-# Define the encoding layers
-encoded <- input_layer %>%
-  layer_dense(units = 4, activation = 'relu') %>%
-  layer_dense(units = 2, activation = 'relu')
+# Fit the GMM model
+gmm = GaussianMixture(n_components=3)  # You can adjust the number of components (clusters)
+gmm.fit(X_scaled)
 
-# Define the decoding layers
-decoded <- encoded %>%
-  layer_dense(units = 4, activation = 'relu') %>%
-  layer_dense(units = ncol(numeric_data), activation = 'sigmoid')
+# Predict the cluster labels
+df['GMM_cluster'] = gmm.predict(X_scaled)
 
-# Define the autoencoder model
-autoencoder <- keras_model(input_layer, decoded)
+# Visualize GMM clustering result in 2D (for example using 'rainfall' and 'temperature')
+plt.figure(figsize=(10, 6))
+plt.scatter(df['rainfall'], df['temperature'], c=df['GMM_cluster'], cmap='viridis', marker='o')
+plt.title("GMM Clustering: Rainfall vs Temperature")
+plt.xlabel('Rainfall')
+plt.ylabel('Temperature')
+plt.colorbar(label='Cluster')
+plt.show()
 
-# Compile the model
-autoencoder %>% compile(optimizer = 'adam', loss = 'mean_squared_error')
+# Visualize GMM clustering result in 2D (using 'temperature' and 'wind')
+plt.figure(figsize=(10, 6))
+plt.scatter(df['temperature'], df['wind'], c=df['GMM_cluster'], cmap='viridis', marker='o')
+plt.title("GMM Clustering: Temperature vs Wind")
+plt.xlabel('Temperature')
+plt.ylabel('Wind')
+plt.colorbar(label='Cluster')
+plt.show()
 
-# Train the autoencoder
-history <- autoencoder %>% fit(
-  as.matrix(numeric_data),
-  as.matrix(numeric_data),
-  epochs = 50,
-  batch_size = 10,
-  validation_split = 0.2
-)
-
-# Get the normalised data from the autoencoder
-normalized_data <- autoencoder %>% predict(as.matrix(numeric_data))
-
-# Convert the normalised data back to a data frame
-normalized_data <- as.data.frame(normalized_data)
-
-# Add column names
-colnames(normalized_data) <- colnames(numeric_data)
-
-# View the first few rows of the normalised dataset
-head(normalized_data)
-
-# Use newData.csv for clustering analysis
-data <- numeric_data
-colnames(data) <- c("V1", "V2")
-data$cluster <- kmeans(data, centers = 4)$cluster
-
-ggplot(data, aes(x = V1, y = V2, color = factor(cluster))) +
-  geom_point() +
-  theme_minimal() +
-  labs(title = "Clusters from newData.csv")
+# Save the GMM clustering results to a CSV file
+df.to_csv('gmm_clusters.csv', index=False)
+print("GMM clustering completed and saved.")
