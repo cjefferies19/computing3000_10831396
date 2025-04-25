@@ -1,97 +1,54 @@
-#### Load Data from CSV ####
+import numpy as np
+import pandas as pd
+from minisom import MiniSom
+from sklearn.preprocessing import StandardScaler
+import matplotlib.pyplot as plt
 
-## Load necessary library
-library(data.table)
+# Load the filled combined dataset
+df = pd.read_csv('combined_weather_data.csv')
 
-## Read the data from CSV
-newData <- fread("newData.csv")
+# Select the relevant features for clustering
+X = df[['rainfall', 'temperature', 'wind']].values
 
-#### train the SOM ####
+# Normalize the data
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
 
-## define a grid for the SOM and train
+# SOM Parameters
+som = MiniSom(x=10, y=10, input_len=X_scaled.shape[1], sigma=1.0, learning_rate=0.5)
+som.train(X_scaled, 10000)
 
-library(kohonen)
+# Visualize SOM weights (as a heatmap)
+weights = som.get_weights()
 
-grid.size <- ceiling(nrow(newData) ^ (1/2.5))
-som.grid <- somgrid(xdim = grid.size, ydim = grid.size, topo = 'hexagonal', toroidal = T)
-som.model <- som(data.matrix(newData), grid = som.grid)
+# Plotting weights for each feature (rainfall, temperature, wind)
+plt.figure(figsize=(12, 8))
 
-## extract some data to make it easier to use
+# Plot the weights of the first feature (rainfall)
+plt.subplot(1, 3, 1)
+plt.imshow(weights[:, :, 0], cmap='coolwarm', interpolation='nearest')
+plt.title('SOM Weights - Rainfall')
+plt.colorbar()
 
-som.events <- som.model$codes[[1]]
-som.dist <- as.matrix(dist(som.events))
+# Plot the weights of the second feature (temperature)
+plt.subplot(1, 3, 2)
+plt.imshow(weights[:, :, 1], cmap='coolwarm', interpolation='nearest')
+plt.title('SOM Weights - Temperature')
+plt.colorbar()
 
-## generate a plot after training.
+# Plot the weights of the third feature (wind)
+plt.subplot(1, 3, 3)
+plt.imshow(weights[:, :, 2], cmap='coolwarm', interpolation='nearest')
+plt.title('SOM Weights - Wind')
+plt.colorbar()
 
-plot(som.model,
-     type = 'mapping',
-     keepMargins = F,
-     col = NA,
-     main = '')
+plt.tight_layout()
+plt.show()
 
-#### look for a reasonable number of clusters ####
+# Cluster assignments (using the winning neuron)
+som_clusters = np.array([som.winner(x) for x in X_scaled])
+df['SOM_cluster'] = [x[0] * 10 + x[1] for x in som_clusters]
 
-try.k <- 2:100
-cluster.dist.eval <- as.data.frame(matrix(ncol = 3, nrow = (length(try.k))))
-colnames(cluster.dist.eval) <- c('k', 'kmeans', 'hclust')
-
-for(i in 1:length(try.k)) {
-  cluster.dist.eval[i, 'k'] <- try.k[i]
-  cluster.dist.eval[i, 'kmeans'] <- clusterMeanDist(kmeans(som.events, centers = try.k[i], iter.max = 20)$cluster)
-  cluster.dist.eval[i, 'hclust'] <- clusterMeanDist(cutree(hclust(vegdist(som.events)), k = try.k[i]))
-}
-
-plot(cluster.dist.eval[, 'kmeans'] ~ try.k,
-     type = 'l')
-
-lines(cluster.dist.eval[, 'hclust'] ~ try.k,
-      col = 'red')
-
-legend('topright',
-       legend = c('k-means', 'hierarchical'),
-       col = c('black', 'red'),
-       lty = c(1, 1))
-
-#### evaluate clustering algorithms ####
-
-library(pmclust)
-
-plotSOM <- function(clusters){
-  plot(som.model,
-       type = 'mapping',
-       keepMargins = F,
-       col = NA)
-  
-  add.cluster.boundaries(som.model, clusters)
-}
-
-cluster.tries <- list()
-
-for(k in c(20)){
-  
-  som.cluster.pm.em <- pmclust(som.events, K = k, algorithm = 'em')$class
-  som.cluster.pm.aecm <- pmclust(som.events, K = k, algorithm = 'aecm')$class
-  som.cluster.pm.apecm <- pmclust(som.events, K = k, algorithm = 'apecm')$class
-  som.cluster.pm.apecma <- pmclust(som.events, K = k, algorithm = 'apecma')$class
-  som.cluster.pm.kmeans <- pmclust(som.events, K = k, algorithm = 'kmeans')$class
-  
-  som.cluster.k <- kmeans(som.events, centers = k, iter.max = 100, nstart = 10)$cluster
-  
-  som.dist <- dist(som.events)
-  som.cluster.h <- cutree(hclust(som.dist), k = k)
-  
-  cluster.tries[[paste0('som.cluster.pm.em.', k)]] <- som.cluster.pm.em
-  cluster.tries[[paste0('som.cluster.pm.aecm.', k)]] <- som.cluster.pm.aecm
-  cluster.tries[[paste0('som.cluster.pm.apecm.', k)]] <- som.cluster.pm.apecm
-  cluster.tries[[paste0('som.cluster.pm.apecma.', k)]] <- som.cluster.pm.apecma
-  cluster.tries[[paste0('som.cluster.pm.kmeans.', k)]] <- som.cluster.pm.kmeans
-  cluster.tries[[paste0('som.cluster.k.', k)]] <- som.cluster.k
-  cluster.tries[[paste0('som.cluster.h.', k)]] <- som.cluster.h
-}
-
-plotSOM(cluster.tries$som.cluster.pm.em.20)
-plotSOM(cluster.tries$som.cluster.pm.aecm.20)
-plotSOM(cluster.tries$som.cluster.pm.apecm.20)
-plotSOM(cluster.tries$som.cluster.pm.apecma.20)
-plotSOM(cluster.tries$som.cluster.k.20)
-plotSOM(cluster.tries$som.cluster.h.20)
+# Save SOM results to a CSV file
+df.to_csv('som_clusters.csv', index=False)
+print("SOM clustering completed and saved.")
