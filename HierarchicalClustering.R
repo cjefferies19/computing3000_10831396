@@ -1,53 +1,66 @@
-# Install and load necessary packages
-install.packages("keras")
-library(keras)
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.cluster import AgglomerativeClustering
+from sklearn.neighbors import NearestNeighbors
+from scipy.stats import mode
 
-# Load data from CSV file
-new_data <- read.csv("newData.csv")
+# 1. Load and preprocess the full dataset
+df = pd.read_csv('combined_weather_data.csv')
+features = ['rainfall', 'temperature', 'wind']
 
-# Ensure the data is numeric
-numeric_data <- new_data[sapply(new_data, is.numeric)]
+# Standardize
+X = df[features].values
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
 
-# Normalise the data to range [0, 1]
-numeric_data <- as.data.frame(scale(numeric_data))
+# PCA to 2D (for speed & consistency)
+pca = PCA(n_components=2, random_state=42)
+X_pca = pca.fit_transform(X_scaled)
 
-# Define the input layer
-input_layer <- layer_input(shape = ncol(numeric_data))
+# Prepare ensemble parameters
+n_subsets = 5       # number of small hierarchical clusterings
+subset_size = 1000  # size of each subset
+n_clusters = 3      # desired number of clusters
 
-# Define the encoding layers
-encoded <- input_layer %>%
-  layer_dense(units = 4, activation = 'relu') %>%
-  layer_dense(units = 2, activation = 'relu')
+# Storage for labels from each subset
+labels_matrix = np.zeros((len(df), n_subsets), dtype=int)
 
-# Define the decoding layers
-decoded <- encoded %>%
-  layer_dense(units = 4, activation = 'relu') %>%
-  layer_dense(units = ncol(numeric_data), activation = 'sigmoid')
+# 2. For each subset: cluster & record nearest-neighbor labels
+for i in range(n_subsets):
+    # 2a) Random subset indices
+    idx = np.random.choice(len(df), subset_size, replace=False)
+    X_sub = X_pca[idx]
 
-# Define the autoencoder model
-autoencoder <- keras_model(input_layer, decoded)
+    # 2b) Hierarchical clustering on this subset
+    agg = AgglomerativeClustering(n_clusters=n_clusters, linkage='ward')
+    sub_labels = agg.fit_predict(X_sub)
 
-# Compile the model
-autoencoder %>% compile(optimizer = 'adam', loss = 'mean_squared_error')
+    # 2c) Build a 1-NN model on subset in PCA space
+    nn = NearestNeighbors(n_neighbors=1).fit(X_sub)
 
-# Train the autoencoder
-history <- autoencoder %>% fit(
-  as.matrix(numeric_data),
-  as.matrix(numeric_data),
-  epochs = 50,
-  batch_size = 10,
-  validation_split = 0.2
+    # 2d) For every full-data point, find nearest neighbor in subset
+    _, nbr_idx = nn.kneighbors(X_pca)
+    labels_matrix[:, i] = sub_labels[nbr_idx.flatten()]
+
+# 3. Majority vote across subset clusterings
+final_labels = mode(labels_matrix, axis=1).mode.flatten()
+df['Hierarchical_cluster'] = final_labels
+
+# 4. Save and (optionally) visualize
+df.to_csv('hierarchical_clustered_ensemble.csv', index=False)
+print("✅ Ensemble hierarchical clustering complete. Saved to 'hierarchical_clustered_ensemble.csv'.")
+
+# Quick 2D plot in PCA space
+import matplotlib.pyplot as plt
+plt.figure(figsize=(7,5))
+scatter = plt.scatter(
+    X_pca[:,0], X_pca[:,1],
+    c=final_labels, cmap='tab10', s=15, alpha=0.7
 )
-
-# Get the normalised data from the autoencoder
-normalized_data <- autoencoder %>% predict(as.matrix(numeric_data))
-
-# Convert the normalised data back to a data frame
-normalized_data <- as.data.frame(normalized_data)
-
-# Add column names
-colnames(normalized_data) <- colnames(numeric_data)
-
-# View the first few rows of the normalized dataset
-head(normalized_data)
-
+plt.title('Ensemble Hierarchical Clustering (PCA-reduced)')
+plt.xlabel('PC 1')
+plt.ylabel('PC 2')
+plt.legend(*scatter.legend_elements(), title="Cluster")
+plt.show()
