@@ -1,52 +1,58 @@
-# Load libraries
-library(keras)
-library(dplyr)
-library(scales)
+import numpy as np
+import pandas as pd
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+import matplotlib.pyplot as plt
+from keras.models import Model
+from keras.layers import Input, Dense
+from keras.optimizers import Adam
 
-# Function to normalise data
-normalize_data <- function(x) {
-  return((x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE)))
-}
+# Load your dataset
+df = pd.read_csv('combined_weather_data.csv')
 
-# Load datasets and normalise them
-rainfall <- read.csv("rainfall.csv") %>% lapply(normalize_data) %>% as.data.frame()
-temperature <- read.csv("temperature.csv") %>% lapply(normalize_data) %>% as.data.frame()
-wind <- read.csv("wind.csv") %>% lapply(normalize_data) %>% as.data.frame()
-dem <- read.csv("dem.csv") %>% lapply(normalize_data) %>% as.data.frame()
-land <- read.csv("land.csv") %>% lapply(normalize_data) %>% as.data.frame()
-floodHistory <- read.csv("floodHistory.csv") %>% lapply(normalize_data) %>% as.data.frame()
-population <- read.csv("population.csv") %>% lapply(normalize_data) %>% as.data.frame()
+# Select relevant features
+features = ['rainfall', 'temperature', 'wind']
+X = df[features].values
 
-# Combine all datasets into a single matrix
-big_data <- cbind(rainfall, temperature, wind, dem, land, floodHistory, population)
-big_data <- as.matrix(big_data)
+# Normalize the data
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
 
-# Define input shape
-input_shape <- ncol(big_data)
+# Define the Autoencoder model
+input_layer = Input(shape=(X_scaled.shape[1],))
+encoded = Dense(8, activation='relu')(input_layer)  # Encoded representation (8-dimensional)
+decoded = Dense(X_scaled.shape[1], activation='sigmoid')(encoded)  # Reconstructed input
 
-# Define the encoder
-encoder <- keras_model_sequential() %>%
-  layer_dense(units = 128, activation = 'relu', input_shape = c(input_shape)) %>%
-  layer_dense(units = 64, activation = 'relu') %>%
-  layer_dense(units = 2, activation = 'relu')  # 2D representation
+# Autoencoder model
+autoencoder = Model(input_layer, decoded)
 
-# Define the decoder
-decoder <- keras_model_sequential() %>%
-  layer_dense(units = 64, activation = 'relu', input_shape = c(2)) %>%
-  layer_dense(units = 128, activation = 'relu') %>%
-  layer_dense(units = input_shape, activation = 'sigmoid')
+# Encoder model (used to extract encoded representation)
+encoder = Model(input_layer, encoded)
 
-# Connect encoder and decoder
-autoencoder <- keras_model(inputs = encoder$input, outputs = decoder(encoder$output))
+# Compile and train the autoencoder
+autoencoder.compile(optimizer=Adam(), loss='mean_squared_error')
+autoencoder.fit(X_scaled, X_scaled, epochs=50, batch_size=256, shuffle=True, validation_split=0.2)
 
-# Compile the model
-autoencoder %>% compile(optimizer = 'adam', loss = 'mean_squared_error')
+# Get the encoded features
+encoded_X = encoder.predict(X_scaled)
 
-# Train the model
-autoencoder %>% fit(big_data, big_data, epochs = 100, batch_size = 32, validation_split = 0.2)
+# Perform clustering on the encoded features
+kmeans = KMeans(n_clusters=3, random_state=42)
+kmeans_labels = kmeans.fit_predict(encoded_X)
 
-# Extract encoded features for unsupervised learning
-encoded_data <- predict(encoder, big_data)
+# Add the clustering results to the dataframe
+df['Autoencoder_cluster'] = kmeans_labels
 
-# Save data
-write.csv(encoded_data, "newData.csv", row.names = FALSE)
+# Save the results
+df.to_csv('combined_with_autoencoder_clusters.csv', index=False)
+
+# Visualize the clustering results (using the encoded features)
+plt.scatter(encoded_X[:, 0], encoded_X[:, 1], c=kmeans_labels, cmap='viridis')
+plt.title('Autoencoder Clustering Visualization')
+plt.xlabel('Encoded Feature 1')
+plt.ylabel('Encoded Feature 2')
+plt.colorbar(label='Cluster')
+plt.show()
+
+# Show the first few rows of the final dataframe with clustering results
+print(df.head())
