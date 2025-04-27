@@ -26,7 +26,7 @@ raw_data <- fread("combined_with_autoencoder_clusters.csv") %>%
   ) %>%
   as.data.table()
 
-# UI
+# UI characteristics
 ui <- fluidPage(
   tags$head(
     tags$style(HTML("
@@ -47,14 +47,14 @@ ui <- fluidPage(
     "))
   ),
   
-  titlePanel("UK Flood Risk Map (by Month)"),
+  titlePanel("Extreme Cast"),
   
   sidebarLayout(
     sidebarPanel(
       selectInput("month", "Select Month:",
                   choices = sort(unique(raw_data$month))),
       sliderInput("threshold", "Min Flood Risk %:",
-                  min = 0, max = 100, value = 30, step = 1)
+                  min = 5, max = 95, value = 30, step = 1)
     ),
     
     mainPanel(
@@ -70,6 +70,7 @@ ui <- fluidPage(
 # Server
 server <- function(input, output, session) {
   
+  # Dataset filtered by month and risk threshold
   base_df <- reactive({
     req(input$month)
     raw_data %>%
@@ -77,26 +78,31 @@ server <- function(input, output, session) {
       mutate(radius_px = 5 + (flood_risk / 100) * 10)
   })
   
+  # Reactive zoom level from map
   zoom_level <- reactive(input$floodMap_zoom %||% 6) %>%
     debounce(300)
-  
+
+  # Initial map render  
   output$floodMap <- renderLeaflet({
     leaflet() %>% addTiles() %>% fitBounds(-10, 50, 2, 56)
   })
   
+  # Update map markers when data or zoom changes
   observeEvent(
     { base_df(); zoom_level() },
     {
-      df <- base_df()
-      zoom <- zoom_level()
-      proxy <- leafletProxy("floodMap")
-      
+      df <- base_df() # Get filtered data
+      zoom <- zoom_level() # Current zoom level
+      proxy <- leafletProxy("floodMap") # Use proxy for efficient updating
+
+      # Clear existing marker groups
       proxy %>%
         clearGroup("clustered") %>%
         clearGroup("jittered")
       
       if (zoom <= 8) {
         proxy %>%
+          # Low zoom - cluster points
           addCircleMarkers(
             data           = df,
             lng            = ~longitude,
@@ -115,7 +121,9 @@ server <- function(input, output, session) {
             )
           )
       } else {
-        deg_per_px <- 360 / (256 * 2^zoom)
+        
+        # High zoom - spread out (jitter) points slightly
+        deg_per_px <- 360 / (256 * 2^zoom) # Calculate degrees per pixel
         df2 <- df %>%
           mutate(
             jitter_deg = radius_px * deg_per_px,
@@ -139,22 +147,25 @@ server <- function(input, output, session) {
           )
       }
     },
-    ignoreInit = FALSE
+    ignoreInit = FALSE # Run on startup
   )
-  
-  clicked_id <- reactiveVal(NULL)
+
+  # Handling clicking data points
+  clicked_id <- reactiveVal(NULL) # Reactive to store clicked marker ID
   
   observeEvent(input$floodMap_marker_click, {
     click <- input$floodMap_marker_click
-    clicked_id(click$id)
+    clicked_id(click$id) # Save the ID of clicked marker
   })
   
   output$selectedPoint <- renderDT({
-    req(clicked_id())
-    df <- base_df()
+    req(clicked_id()) # Only show if something clicked
+    df <- base_df() # Get current filtered dataset
     selected_row <- df %>%
       filter(id == clicked_id()) %>%
       mutate(
+        
+        # Rounding values to 1 decimal place
         latitude = round(latitude, 1),
         longitude = round(longitude, 1),
         flood_risk = round(flood_risk, 1),
@@ -172,5 +183,5 @@ server <- function(input, output, session) {
   })
 }
 
-# Run
+# Run the app
 shinyApp(ui, server)
