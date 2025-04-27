@@ -10,18 +10,18 @@ df = pd.read_csv('combined_weather_data.csv')
 # Select the relevant features for clustering
 X = df[['rainfall', 'temperature', 'wind']].values
 
-# Normalize the data
+# Normalise the data
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
-# Fit the GMM model
-gmm = GaussianMixture(n_components=3)  # You can adjust the number of components (clusters)
+# Fit the model
+gmm = GaussianMixture(n_components=3)  # Number of clusters given
 gmm.fit(X_scaled)
 
 # Predict the cluster labels
 df['GMM_cluster'] = gmm.predict(X_scaled)
 
-# Visualize GMM clustering result in 2D (for example using 'rainfall' and 'temperature')
+# Visualise GMM clustering result in 2D
 plt.figure(figsize=(10, 6))
 plt.scatter(df['rainfall'], df['temperature'], c=df['GMM_cluster'], cmap='viridis', marker='o')
 plt.title("GMM Clustering: Rainfall vs Temperature")
@@ -30,7 +30,7 @@ plt.ylabel('Temperature')
 plt.colorbar(label='Cluster')
 plt.show()
 
-# Visualize GMM clustering result in 2D (using 'temperature' and 'wind')
+# Visualise GMM clustering result in 2D
 plt.figure(figsize=(10, 6))
 plt.scatter(df['temperature'], df['wind'], c=df['GMM_cluster'], cmap='viridis', marker='o')
 plt.title("GMM Clustering: Temperature vs Wind")
