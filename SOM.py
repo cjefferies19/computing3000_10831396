@@ -10,7 +10,7 @@ df = pd.read_csv('combined_weather_data.csv')
 # Select the relevant features for clustering
 X = df[['rainfall', 'temperature', 'wind']].values
 
-# Normalize the data
+# Normalise the data
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
@@ -18,7 +18,7 @@ X_scaled = scaler.fit_transform(X)
 som = MiniSom(x=10, y=10, input_len=X_scaled.shape[1], sigma=1.0, learning_rate=0.5)
 som.train(X_scaled, 10000)
 
-# Visualize SOM weights (as a heatmap)
+# Visualise SOM weights (heatmap)
 weights = som.get_weights()
 
 # Plotting weights for each feature (rainfall, temperature, wind)
@@ -45,7 +45,7 @@ plt.colorbar()
 plt.tight_layout()
 plt.show()
 
-# Cluster assignments (using the winning neuron)
+# Cluster assignments
 som_clusters = np.array([som.winner(x) for x in X_scaled])
 df['SOM_cluster'] = [x[0] * 10 + x[1] for x in som_clusters]
 
