@@ -6,11 +6,11 @@ from sklearn.cluster import AgglomerativeClustering
 from sklearn.neighbors import NearestNeighbors
 from scipy.stats import mode
 
-# 1. Load and preprocess the full dataset
+# Load and preprocess the full dataset
 df = pd.read_csv('combined_weather_data.csv')
 features = ['rainfall', 'temperature', 'wind']
 
-# Standardize
+# Standardise
 X = df[features].values
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
@@ -20,39 +20,38 @@ pca = PCA(n_components=2, random_state=42)
 X_pca = pca.fit_transform(X_scaled)
 
 # Prepare ensemble parameters
-n_subsets = 5       # number of small hierarchical clusterings
-subset_size = 1000  # size of each subset
-n_clusters = 3      # desired number of clusters
+n_subsets = 5 # number of small hierarchical clusterings
+subset_size = 1000 # size of each subset
+n_clusters = 3 # desired number of clusters
 
 # Storage for labels from each subset
 labels_matrix = np.zeros((len(df), n_subsets), dtype=int)
 
-# 2. For each subset: cluster & record nearest-neighbor labels
 for i in range(n_subsets):
-    # 2a) Random subset indices
+    # Random subset indices
     idx = np.random.choice(len(df), subset_size, replace=False)
     X_sub = X_pca[idx]
 
-    # 2b) Hierarchical clustering on this subset
+    # Hierarchical clustering on this subset
     agg = AgglomerativeClustering(n_clusters=n_clusters, linkage='ward')
     sub_labels = agg.fit_predict(X_sub)
 
-    # 2c) Build a 1-NN model on subset in PCA space
+    # Build a 1-NN model on subset in PCA space
     nn = NearestNeighbors(n_neighbors=1).fit(X_sub)
 
-    # 2d) For every full-data point, find nearest neighbor in subset
+    # For every full-data point, find nearest neighbor in subset
     _, nbr_idx = nn.kneighbors(X_pca)
     labels_matrix[:, i] = sub_labels[nbr_idx.flatten()]
 
-# 3. Majority vote across subset clusterings
+# Majority vote across subset clusterings
 final_labels = mode(labels_matrix, axis=1).mode.flatten()
 df['Hierarchical_cluster'] = final_labels
 
-# 4. Save and (optionally) visualize
+# Save and visualise
 df.to_csv('hierarchical_clustered_ensemble.csv', index=False)
 print("✅ Ensemble hierarchical clustering complete. Saved to 'hierarchical_clustered_ensemble.csv'.")
 
-# Quick 2D plot in PCA space
+# 2D plot in PCA space
 import matplotlib.pyplot as plt
 plt.figure(figsize=(7,5))
 scatter = plt.scatter(
